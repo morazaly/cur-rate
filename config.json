@@ -1,0 +1,10 @@
+{
+    "mysql": {
+        "user": "kursUser",
+        "password": "kursPswd",
+        "host": "127.0.0.1",
+        "port": "3306",
+        "database": "TEST"
+    },
+    "appPort":":8080"
+}
