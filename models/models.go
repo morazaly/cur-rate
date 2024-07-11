@@ -15,6 +15,7 @@ type Item struct {
 	Fullname    string `xml:"fullname"`
 	Title       string `xml:"title"`
 	Description string `xml:"description"`
+	Date        string `xml:"date"`
 }
 
 type ResponseItem struct {
@@ -27,4 +28,12 @@ type ResponseItem struct {
 
 type Response struct {
 	Success bool `json:"success"`
+}
+
+type UserRepository interface {
+	GetByDate(Date string) ([]*ResponseItem, error)
+	GetByDateCode(Date string, Code string) ([]*ResponseItem, error)
+	Exists(user *Item) (int, error)
+	Update(user *Item) error
+	Insert(user *Item) error
 }

@@ -2,6 +2,7 @@ package service
 
 import (
 	"currency/models"
+	"currency/repository"
 	"database/sql"
 	"encoding/json"
 	"encoding/xml"
@@ -33,32 +34,25 @@ func saveToDatabase(db *sql.DB, responseXml []byte, errCh chan error) {
 		return
 	}
 
-	// Пример запроса на вставку данных в таблицу
-
-	// если есть запись COD - A_DATE, сделать апдейт или пропускать
-
 	for _, item := range rate.Items {
-		//	for  int i:= 0; i++; i< len(Items) - 1 {
-		var count int
+		item.Date = rate.Date
 
-		err := db.QueryRow("SELECT COUNT(*) FROM  r_currency  where code = ? AND A_DATE = str_to_date(?,'%d.%m.%Y')", item.Title, rate.Date).Scan(&count)
-
+		MySQLUserRepository := repository.MySQLUserRepository{Db: db}
+		count, err := MySQLUserRepository.Exists(&item)
 		if err != nil {
 			errCh <- err
 			return
 		}
 
 		if count == 0 {
-			_, err := db.Exec("INSERT INTO r_currency (TITLE, CODE, VALUE, A_DATE) VALUES (?, ?, ?, str_to_date(?,'%d.%m.%Y'))", item.Fullname, item.Title, item.Description, rate.Date)
-
+			err := MySQLUserRepository.Insert(&item)
 			if err != nil {
 				errCh <- err
 				return
 			}
 
 		} else {
-			_, err := db.Exec("UPDATE r_currency SET VALUE = ? WHERE  CODE = ? AND  A_DATE = str_to_date(?,'%d.%m.%Y')", item.Description, item.Title, rate.Date)
-
+			err := MySQLUserRepository.Update(&item)
 			if err != nil {
 				errCh <- err
 				return
@@ -99,7 +93,7 @@ func FetchFromApi(db *sql.DB) http.HandlerFunc {
 		// Сохранение в базу данных
 		errCh := make(chan error)
 		//defer close(errCh)
-		go saveToDatabase(db, body, errCh) // 10
+		go saveToDatabase(db, body, errCh)
 
 		if err := <-errCh; err != nil {
 			log.Printf("Failed to save data to database: %v", err)
@@ -116,7 +110,6 @@ func FetchFromApi(db *sql.DB) http.HandlerFunc {
 			http.Error(w, "Failed Marshal", http.StatusInternalServerError)
 			return
 		}
-		// w.Write(data)
 	}
 }
 
@@ -128,70 +121,34 @@ func GetFromApi(db *sql.DB) http.HandlerFunc {
 		if db == nil {
 			return
 		}
-
+		MySQLUserRepository := repository.MySQLUserRepository{Db: db}
 		switch exists {
 
 		case false:
 
-			sql, err := db.Query("SELECT * FROM  r_currency  where  A_DATE = str_to_date(?,'%d.%m.%Y')", date)
+			v, err := MySQLUserRepository.GetByDate(date)
 
 			if err != nil {
-
 				return
 			}
 
-			defer sql.Close()
-
-			var v struct {
-				Data []models.ResponseItem `json:"data"`
-			}
-
-			for sql.Next() {
-				var responseItem models.ResponseItem
-
-				if err := sql.Scan(&responseItem.Id, &responseItem.Title, &responseItem.Code, &responseItem.Value, &responseItem.Adate); err != nil {
-					// handle error
-					return
-				}
-				v.Data = append(v.Data, responseItem)
-			}
 			p, err := json.Marshal(v)
 
 			if err != nil {
-				// handle error
 				return
 			}
 			w.Header().Set("Content-Type", "application/json")
 			w.Write(p)
 
 		case true:
-
-			sql, err := db.Query("SELECT * FROM  r_currency  where code = ? AND A_DATE = str_to_date(?,'%d.%m.%Y')", code, date)
-
+			v, err := MySQLUserRepository.GetByDateCode(date, code)
 			if err != nil {
-
 				return
-			}
-			defer sql.Close()
-
-			var v struct {
-				Data []models.ResponseItem `json:"data"`
-			}
-
-			for sql.Next() {
-				var responseItem models.ResponseItem
-
-				if err := sql.Scan(&responseItem.Id, &responseItem.Title, &responseItem.Code, &responseItem.Value, &responseItem.Adate); err != nil {
-					// handle error
-					return
-				}
-				v.Data = append(v.Data, responseItem)
 			}
 
 			p, err := json.Marshal(v)
 
 			if err != nil {
-				// handle error
 				return
 			}
 			w.Header().Set("Content-Type", "application/json")
