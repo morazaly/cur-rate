@@ -1,13 +1,13 @@
 package db
 
 import (
-	"currency/config"
+	"currency/internal/models"
 	"database/sql"
 	"fmt"
 	"log"
 )
 
-func NewDb(aconfig *config.Config) *sql.DB {
+func NewDb(aconfig *models.Config) *sql.DB {
 
 	// Подключение к базе данных MySQL
 	dataSourceName := fmt.Sprintf(
