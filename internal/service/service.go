@@ -1,9 +1,8 @@
 package service
 
 import (
-	"currency/models"
-	"currency/repository"
-	"database/sql"
+	"currency/internal/models"
+	"currency/internal/repository"
 	"encoding/json"
 	"encoding/xml"
 	"fmt"
@@ -15,19 +14,25 @@ import (
 	"github.com/gorilla/mux"
 )
 
-func saveToDatabase(db *sql.DB, responseXml []byte, errCh chan error) {
+type Service struct {
+	MySQLUserRepository repository.MySQLUserRepository
+}
 
-	//errCh := make(chan error)
+func New(
+	MySQLUserRepository repository.MySQLUserRepository,
+) *Service {
+	return &Service{
+		MySQLUserRepository: MySQLUserRepository,
+	}
+}
 
-	//defer close(errCh)
-	//defer db.Close()
-	if db == nil {
+func saveToDatabase(MySQLUserRepository repository.MySQLUserRepository, responseXml []byte, errCh chan error) {
+
+	if MySQLUserRepository.Db == nil {
 		errCh <- fmt.Errorf("database connection is nil")
 		return
 	}
-
 	var rate models.Rates
-
 	// Разбор XML
 	if err := xml.Unmarshal(responseXml, &rate); err != nil {
 		errCh <- err
@@ -36,42 +41,35 @@ func saveToDatabase(db *sql.DB, responseXml []byte, errCh chan error) {
 
 	for _, item := range rate.Items {
 		item.Date = rate.Date
-
-		MySQLUserRepository := repository.MySQLUserRepository{Db: db}
 		count, err := MySQLUserRepository.Exists(&item)
 		if err != nil {
 			errCh <- err
 			return
 		}
-
 		if count == 0 {
 			err := MySQLUserRepository.Insert(&item)
 			if err != nil {
 				errCh <- err
 				return
 			}
-
 		} else {
 			err := MySQLUserRepository.Update(&item)
 			if err != nil {
 				errCh <- err
 				return
 			}
-
 		}
 	}
 	errCh <- nil
-	//	}()
-	//return errCh
 }
 
-func FetchFromApi(db *sql.DB) http.HandlerFunc {
+func (s *Service) FetchFromApi(aconfig models.Config) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		vars := mux.Vars(r)
 		date := vars["date"]
 
 		// URL of the public API
-		apiURL := "https://nationalbank.kz/rss/get_rates.cfm?fdate=" + date
+		apiURL := aconfig.ApiURL + date
 
 		// Make the HTTP GET request
 		resp, err := http.Get(apiURL)
@@ -89,11 +87,10 @@ func FetchFromApi(db *sql.DB) http.HandlerFunc {
 			http.Error(w, "Failed to read response", http.StatusInternalServerError)
 			return
 		}
-
 		// Сохранение в базу данных
 		errCh := make(chan error)
 		//defer close(errCh)
-		go saveToDatabase(db, body, errCh)
+		go saveToDatabase(s.MySQLUserRepository, body, errCh)
 
 		if err := <-errCh; err != nil {
 			log.Printf("Failed to save data to database: %v", err)
@@ -102,7 +99,6 @@ func FetchFromApi(db *sql.DB) http.HandlerFunc {
 		}
 
 		// Write the JSON response
-
 		w.Header().Set("Content-Type", "application/json")
 
 		if err := json.NewEncoder(w).Encode(models.Response{Success: true}); err != nil {
@@ -113,27 +109,22 @@ func FetchFromApi(db *sql.DB) http.HandlerFunc {
 	}
 }
 
-func GetFromApi(db *sql.DB) http.HandlerFunc {
+func (s *Service) GetFromApi() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		vars := mux.Vars(r)
 		date := vars["date"]
 		code, exists := vars["code"]
-		if db == nil {
+		if s.MySQLUserRepository.Db == nil {
 			return
 		}
-		MySQLUserRepository := repository.MySQLUserRepository{Db: db}
 		switch exists {
 
 		case false:
-
-			v, err := MySQLUserRepository.GetByDate(date)
-
+			v, err := s.MySQLUserRepository.GetByDate(date)
 			if err != nil {
 				return
 			}
-
 			p, err := json.Marshal(v)
-
 			if err != nil {
 				return
 			}
@@ -141,13 +132,11 @@ func GetFromApi(db *sql.DB) http.HandlerFunc {
 			w.Write(p)
 
 		case true:
-			v, err := MySQLUserRepository.GetByDateCode(date, code)
+			v, err := s.MySQLUserRepository.GetByDateCode(date, code)
 			if err != nil {
 				return
 			}
-
 			p, err := json.Marshal(v)
-
 			if err != nil {
 				return
 			}

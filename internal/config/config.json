@@ -6,5 +6,6 @@
         "port": "3306",
         "database": "TEST"
     },
-    "appPort":":8080"
+    "appPort":":8080",
+    "apiURL" :"https://nationalbank.kz/rss/get_rates.cfm?fdate="
 }

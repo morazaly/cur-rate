@@ -1,4 +1,4 @@
-package config
+package models
 
 import (
 	"encoding/json"
@@ -15,12 +15,13 @@ type Config struct {
 		Database string `json:"database"`
 	} `json:"mysql"`
 	AppPort string `json:"appPort"`
+	ApiURL  string `json:"apiURL"`
 }
 
 func NewConfig() *Config {
 	var aconfig Config
 
-	configFile, err := os.Open("config.json")
+	configFile, err := os.Open("C:/Users/oraza/go/src/currency/internal/config/config.json")
 	if err != nil {
 		log.Fatal(err)
 	}

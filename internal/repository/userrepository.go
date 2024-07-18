@@ -1,7 +1,7 @@
 package repository
 
 import (
-	"currency/models"
+	"currency/internal/models"
 	"database/sql"
 )
 
@@ -10,10 +10,20 @@ type MySQLUserRepository struct {
 	Db *sql.DB
 }
 
+type UserRepository interface {
+	GetByDate(Date string) ([]models.ResponseItem, error)
+	GetByDateCode(Date string, Code string) ([]models.ResponseItem, error)
+	Exists(user *models.Item) (int, error)
+	Update(user *models.Item) error
+	Insert(user *models.Item) error
+}
+
+const GetByDateQuery = "SELECT * FROM  r_currency  where  A_DATE = str_to_date(?,'%d.%m.%Y')"
+
 func (repo *MySQLUserRepository) GetByDate(Date string) ([]models.ResponseItem, error) {
 	// Implementation
 
-	sql, err := repo.Db.Query("SELECT * FROM  r_currency  where  A_DATE = str_to_date(?,'%d.%m.%Y')", Date)
+	sql, err := repo.Db.Query(GetByDateQuery, Date)
 
 	if err != nil {
 
@@ -38,10 +48,12 @@ func (repo *MySQLUserRepository) GetByDate(Date string) ([]models.ResponseItem, 
 
 	return v.Data, nil
 }
+
+const GetByDateCodeQuery = "SELECT * FROM  r_currency  where code = ? AND A_DATE = str_to_date(?,'%d.%m.%Y')"
 
 func (repo *MySQLUserRepository) GetByDateCode(Date string, Code string) ([]models.ResponseItem, error) {
 	// Implementation
-	sql, err := repo.Db.Query("SELECT * FROM  r_currency  where code = ? AND A_DATE = str_to_date(?,'%d.%m.%Y')", Code, Date)
+	sql, err := repo.Db.Query(GetByDateCodeQuery, Code, Date)
 
 	if err != nil {
 
@@ -65,10 +77,13 @@ func (repo *MySQLUserRepository) GetByDateCode(Date string, Code string) ([]mode
 
 	return v.Data, nil
 }
+
+const ExistsQuery = "SELECT COUNT(*) FROM  r_currency  where code = ? AND A_DATE = str_to_date(?,'%d.%m.%Y')"
+
 func (repo *MySQLUserRepository) Exists(user *models.Item) (int, error) {
 	// Implementation
 	var count int
-	err := repo.Db.QueryRow("SELECT COUNT(*) FROM  r_currency  where code = ? AND A_DATE = str_to_date(?,'%d.%m.%Y')", user.Title, user.Date).Scan(&count)
+	err := repo.Db.QueryRow(ExistsQuery, user.Title, user.Date).Scan(&count)
 
 	if err != nil {
 		return 0, err
@@ -77,18 +92,24 @@ func (repo *MySQLUserRepository) Exists(user *models.Item) (int, error) {
 
 	return count, nil
 }
+
+const UpdateQuery = "UPDATE r_currency SET VALUE = ? WHERE  CODE = ? AND  A_DATE = str_to_date(?,'%d.%m.%Y')"
+
 func (repo *MySQLUserRepository) Update(user *models.Item) error {
 	// Implementation
-	_, err := repo.Db.Exec("UPDATE r_currency SET VALUE = ? WHERE  CODE = ? AND  A_DATE = str_to_date(?,'%d.%m.%Y')", user.Description, user.Title, user.Date)
+	_, err := repo.Db.Exec(UpdateQuery, user.Description, user.Title, user.Date)
 	if err != nil {
 		return err
 	}
 
 	return nil
 }
+
+const InsertQuery = "INSERT INTO r_currency (TITLE, CODE, VALUE, A_DATE) VALUES (?, ?, ?, str_to_date(?,'%d.%m.%Y'))"
+
 func (repo *MySQLUserRepository) Insert(user *models.Item) error {
 	// Implementation
-	_, err := repo.Db.Exec("INSERT INTO r_currency (TITLE, CODE, VALUE, A_DATE) VALUES (?, ?, ?, str_to_date(?,'%d.%m.%Y'))", user.Fullname, user.Title, user.Description, user.Date)
+	_, err := repo.Db.Exec(InsertQuery, user.Fullname, user.Title, user.Description, user.Date)
 
 	if err != nil {
 		return err

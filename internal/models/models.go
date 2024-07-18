@@ -29,11 +29,3 @@ type ResponseItem struct {
 type Response struct {
 	Success bool `json:"success"`
 }
-
-type UserRepository interface {
-	GetByDate(Date string) ([]*ResponseItem, error)
-	GetByDateCode(Date string, Code string) ([]*ResponseItem, error)
-	Exists(user *Item) (int, error)
-	Update(user *Item) error
-	Insert(user *Item) error
-}
