@@ -11,6 +11,9 @@ func main() {
 	// Создание маршрута и запуск веб-сервера
 	r := mux.NewRouter()
 	h := app.New()
-	h.Start(r)
-
+	err := h.Start(r)
+	if err != nil {
+		h.GetLogger().Error(err.Error())
+	}
+	h.GetLogger().Info("App is started")
 }

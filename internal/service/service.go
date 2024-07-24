@@ -7,7 +7,9 @@ import (
 	"encoding/xml"
 	"fmt"
 	"io/ioutil"
-	"log"
+
+	//"log"
+	"log/slog"
 	"net/http"
 
 	_ "github.com/go-sql-driver/mysql"
@@ -16,13 +18,16 @@ import (
 
 type Service struct {
 	MySQLUserRepository repository.MySQLUserRepository
+	Log                 *slog.Logger
 }
 
 func New(
 	MySQLUserRepository repository.MySQLUserRepository,
+	Log *slog.Logger,
 ) *Service {
 	return &Service{
 		MySQLUserRepository: MySQLUserRepository,
+		Log:                 Log,
 	}
 }
 
@@ -74,7 +79,8 @@ func (s *Service) FetchFromApi(aconfig models.Config) http.HandlerFunc {
 		// Make the HTTP GET request
 		resp, err := http.Get(apiURL)
 		if err != nil {
-			log.Printf("Failed to fetch data: %v", err)
+			//log.Printf("Failed to fetch data: %v", err)
+			s.Log.Error("Failed to fetch data: ", "err", err)
 			http.Error(w, "Failed to fetch data"+err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -83,7 +89,8 @@ func (s *Service) FetchFromApi(aconfig models.Config) http.HandlerFunc {
 		// Read the response body
 		body, err := ioutil.ReadAll(resp.Body)
 		if err != nil {
-			log.Printf("Failed to read response: %v", err)
+			//log.Printf("Failed to read response: %v", err)
+			s.Log.Error("Failed to read response: ", "err", err)
 			http.Error(w, "Failed to read response", http.StatusInternalServerError)
 			return
 		}
@@ -93,7 +100,8 @@ func (s *Service) FetchFromApi(aconfig models.Config) http.HandlerFunc {
 		go saveToDatabase(s.MySQLUserRepository, body, errCh)
 
 		if err := <-errCh; err != nil {
-			log.Printf("Failed to save data to database: %v", err)
+			//log.Printf("Failed to save data to database: %v", err)
+			s.Log.Error("Failed to save data to database: ", "err", err)
 			http.Error(w, "Failed to save data to database"+err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -102,7 +110,8 @@ func (s *Service) FetchFromApi(aconfig models.Config) http.HandlerFunc {
 		w.Header().Set("Content-Type", "application/json")
 
 		if err := json.NewEncoder(w).Encode(models.Response{Success: true}); err != nil {
-			log.Printf("Failed Marshal: %v", err)
+			//log.Printf("Failed Marshal: %v", err)
+			s.Log.Error("Failed Marshal: ", "err", err)
 			http.Error(w, "Failed Marshal", http.StatusInternalServerError)
 			return
 		}
@@ -111,6 +120,7 @@ func (s *Service) FetchFromApi(aconfig models.Config) http.HandlerFunc {
 
 func (s *Service) GetFromApi() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+
 		vars := mux.Vars(r)
 		date := vars["date"]
 		code, exists := vars["code"]
@@ -122,10 +132,12 @@ func (s *Service) GetFromApi() http.HandlerFunc {
 		case false:
 			v, err := s.MySQLUserRepository.GetByDate(date)
 			if err != nil {
+				s.Log.Error("Failed query: ", "err", err)
 				return
 			}
 			p, err := json.Marshal(v)
 			if err != nil {
+				s.Log.Error("Failed Marshal: ", "err", err)
 				return
 			}
 			w.Header().Set("Content-Type", "application/json")
@@ -134,10 +146,12 @@ func (s *Service) GetFromApi() http.HandlerFunc {
 		case true:
 			v, err := s.MySQLUserRepository.GetByDateCode(date, code)
 			if err != nil {
+				s.Log.Error("Failed query: ", "err", err)
 				return
 			}
 			p, err := json.Marshal(v)
 			if err != nil {
+				s.Log.Error("Failed Marshal: ", "err", err)
 				return
 			}
 			w.Header().Set("Content-Type", "application/json")
