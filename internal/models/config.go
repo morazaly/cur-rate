@@ -21,7 +21,7 @@ type Config struct {
 func NewConfig() *Config {
 	var aconfig Config
 
-	configFile, err := os.Open("C:/Users/oraza/go/src/currency/internal/config/config.json")
+	configFile, err := os.Open("..\\config.json")
 	if err != nil {
 		log.Fatal(err)
 	}

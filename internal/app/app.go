@@ -7,10 +7,10 @@ import (
 	"currency/internal/service"
 	"database/sql"
 	"log/slog"
-	"net/http"
 	"os"
+	"strings"
 
-	"github.com/gorilla/mux"
+	"github.com/joho/godotenv"
 )
 
 type app struct {
@@ -19,29 +19,25 @@ type app struct {
 
 type App interface {
 	GetLogger() *slog.Logger
-	Start(r *mux.Router) error
+	Start() error
 }
 
 func New() App {
 
-	handler := slog.NewJSONHandler(os.Stdout, nil)
-
-	logger := slog.New(handler)
-
+	logger := initLogger()
 	return &app{log: logger}
 }
 
-func (h *app) Start(r *mux.Router) error {
-	// Загрузка конфигурации из файла config.json
+func (h *app) Start() error {
+
 	aconfig := *models.NewConfig()
+
 	// Инициализация БД
 	db := initDb(aconfig)
-	r.HandleFunc("/currency/save/{date}", service.New(repository.MySQLUserRepository{Db: db}, h.GetLogger()).FetchFromApi(aconfig)).Methods("GET")
-	r.HandleFunc("/currency/{date}/{code}", service.New(repository.MySQLUserRepository{Db: db}, h.GetLogger()).GetFromApi()).Methods("GET")
-	r.HandleFunc("/currency/{date}", service.New(repository.MySQLUserRepository{Db: db}, h.GetLogger()).GetFromApi()).Methods("GET")
+	s := service.New(repository.MySQLUserRepository{Db: db}, h.GetLogger())
+	handler := NewHandler(aconfig, s)
 	h.GetLogger().Info("Server started at ", "Apport ", aconfig.AppPort)
-	//log.Fatal(http.ListenAndServe(aconfig.AppPort, r))
-	h.GetLogger().Error(http.ListenAndServe(aconfig.AppPort, r).Error())
+	h.GetLogger().Error(handler.StartHandler().Error())
 	return nil
 }
 
@@ -55,4 +51,44 @@ func initDb(aconfig models.Config) *sql.DB {
 
 func (a app) GetLogger() *slog.Logger {
 	return a.log
+}
+
+func initLogger() *slog.Logger {
+	if err := godotenv.Load(); err != nil {
+		panic("Error loading .env file")
+	}
+	logLevel := os.Getenv("LOG_LEVEL")
+	logFormat := os.Getenv("LOG_FORMAT")
+	if logLevel == "" {
+		logLevel = "info"
+	}
+	if logFormat == "" {
+		logFormat = "json"
+	}
+
+	var level slog.Level
+	switch strings.ToLower(logLevel) {
+	case "debug":
+		level = slog.LevelDebug
+	case "info":
+		level = slog.LevelInfo
+	case "warn":
+		level = slog.LevelWarn
+	case "error":
+		level = slog.LevelError
+	default:
+		level = slog.LevelInfo
+	}
+	handlerOptions := &slog.HandlerOptions{
+		Level: level,
+	}
+
+	var handler slog.Handler
+	if strings.ToLower(logFormat) == "json" {
+		handler = slog.NewJSONHandler(os.Stdout, handlerOptions)
+	} else {
+		handler = slog.NewTextHandler(os.Stdout, handlerOptions)
+	}
+
+	return slog.New(handler)
 }

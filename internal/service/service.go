@@ -1,19 +1,15 @@
 package service
 
 import (
+	"context"
 	"currency/internal/models"
 	"currency/internal/repository"
 	"encoding/json"
 	"encoding/xml"
 	"fmt"
-	"io/ioutil"
-
-	//"log"
+	"io"
 	"log/slog"
 	"net/http"
-
-	_ "github.com/go-sql-driver/mysql"
-	"github.com/gorilla/mux"
 )
 
 type Service struct {
@@ -31,7 +27,9 @@ func New(
 	}
 }
 
-func saveToDatabase(MySQLUserRepository repository.MySQLUserRepository, responseXml []byte, errCh chan error) {
+func (s *Service) saveToDatabase(ctx context.Context, responseXml []byte, errCh chan error) {
+
+	MySQLUserRepository := s.MySQLUserRepository
 
 	if MySQLUserRepository.Db == nil {
 		errCh <- fmt.Errorf("database connection is nil")
@@ -40,26 +38,30 @@ func saveToDatabase(MySQLUserRepository repository.MySQLUserRepository, response
 	var rate models.Rates
 	// Разбор XML
 	if err := xml.Unmarshal(responseXml, &rate); err != nil {
+		s.Log.Error("Failed to Unmarshal data: ", "err", err)
 		errCh <- err
 		return
 	}
 
 	for _, item := range rate.Items {
 		item.Date = rate.Date
-		count, err := MySQLUserRepository.Exists(&item)
+		count, err := MySQLUserRepository.Exists(ctx, &item)
 		if err != nil {
+			s.Log.Error("Failed to query Exists: ", "err", err)
 			errCh <- err
 			return
 		}
 		if count == 0 {
-			err := MySQLUserRepository.Insert(&item)
+			err := MySQLUserRepository.Insert(ctx, &item)
 			if err != nil {
+				s.Log.Error("Failed to query Insert: ", "err", err)
 				errCh <- err
 				return
 			}
 		} else {
-			err := MySQLUserRepository.Update(&item)
+			err := MySQLUserRepository.Update(ctx, &item)
 			if err != nil {
+				s.Log.Error("Failed to query Update: ", "err", err)
 				errCh <- err
 				return
 			}
@@ -68,95 +70,72 @@ func saveToDatabase(MySQLUserRepository repository.MySQLUserRepository, response
 	errCh <- nil
 }
 
-func (s *Service) FetchFromApi(aconfig models.Config) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		vars := mux.Vars(r)
-		date := vars["date"]
+func (s *Service) DownloadFromSource(ctx context.Context, aconfig models.Config, date string) models.Response {
 
-		// URL of the public API
-		apiURL := aconfig.ApiURL + date
+	// URL of the public API
+	apiURL := aconfig.ApiURL + date
 
-		// Make the HTTP GET request
-		resp, err := http.Get(apiURL)
-		if err != nil {
-			//log.Printf("Failed to fetch data: %v", err)
-			s.Log.Error("Failed to fetch data: ", "err", err)
-			http.Error(w, "Failed to fetch data"+err.Error(), http.StatusInternalServerError)
-			return
-		}
-		defer resp.Body.Close()
-
-		// Read the response body
-		body, err := ioutil.ReadAll(resp.Body)
-		if err != nil {
-			//log.Printf("Failed to read response: %v", err)
-			s.Log.Error("Failed to read response: ", "err", err)
-			http.Error(w, "Failed to read response", http.StatusInternalServerError)
-			return
-		}
-		// Сохранение в базу данных
-		errCh := make(chan error)
-		//defer close(errCh)
-		go saveToDatabase(s.MySQLUserRepository, body, errCh)
-
-		if err := <-errCh; err != nil {
-			//log.Printf("Failed to save data to database: %v", err)
-			s.Log.Error("Failed to save data to database: ", "err", err)
-			http.Error(w, "Failed to save data to database"+err.Error(), http.StatusInternalServerError)
-			return
-		}
-
-		// Write the JSON response
-		w.Header().Set("Content-Type", "application/json")
-
-		if err := json.NewEncoder(w).Encode(models.Response{Success: true}); err != nil {
-			//log.Printf("Failed Marshal: %v", err)
-			s.Log.Error("Failed Marshal: ", "err", err)
-			http.Error(w, "Failed Marshal", http.StatusInternalServerError)
-			return
-		}
+	// Make the HTTP GET request
+	resp, err := http.Get(apiURL)
+	if err != nil {
+		s.Log.Error("Failed to fetch data: ", "err", err)
+		return models.Response{Success: false}
 	}
+	defer resp.Body.Close()
+	// Read the response body
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		s.Log.Error("Failed to read response: ", "err", err)
+		return models.Response{Success: false}
+	}
+	// Сохранение в базу данных
+	errCh := make(chan error)
+	//defer close(errCh)
+	go s.saveToDatabase(ctx, body, errCh)
+
+	if err := <-errCh; err != nil {
+		s.Log.Error("Failed to save data to database: ", "err", err)
+		return models.Response{Success: false}
+	}
+
+	return models.Response{Success: true}
+
 }
 
-func (s *Service) GetFromApi() http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
+func (s *Service) GetSavedData(ctx context.Context, date string, code string) []byte {
 
-		vars := mux.Vars(r)
-		date := vars["date"]
-		code, exists := vars["code"]
-		if s.MySQLUserRepository.Db == nil {
-			return
+	exists := code != ""
+	if s.MySQLUserRepository.Db == nil {
+		s.Log.Error("db connection is null")
+	}
+	var p []byte
+
+	switch exists {
+
+	case false:
+		v, err := s.MySQLUserRepository.GetByDate(ctx, date)
+		if err != nil {
+			s.Log.Error("Failed query: ", "err", err)
+
 		}
-		switch exists {
+		p, err = json.Marshal(v)
+		if err != nil {
+			s.Log.Error("Failed Marshal: ", "err", err)
 
-		case false:
-			v, err := s.MySQLUserRepository.GetByDate(date)
-			if err != nil {
-				s.Log.Error("Failed query: ", "err", err)
-				return
-			}
-			p, err := json.Marshal(v)
-			if err != nil {
-				s.Log.Error("Failed Marshal: ", "err", err)
-				return
-			}
-			w.Header().Set("Content-Type", "application/json")
-			w.Write(p)
+		}
 
-		case true:
-			v, err := s.MySQLUserRepository.GetByDateCode(date, code)
-			if err != nil {
-				s.Log.Error("Failed query: ", "err", err)
-				return
-			}
-			p, err := json.Marshal(v)
-			if err != nil {
-				s.Log.Error("Failed Marshal: ", "err", err)
-				return
-			}
-			w.Header().Set("Content-Type", "application/json")
-			w.Write(p)
+	case true:
+		v, err := s.MySQLUserRepository.GetByDateCode(ctx, date, code)
+		if err != nil {
+			s.Log.Error("Failed query: ", "err", err)
+
+		}
+		p, err = json.Marshal(v)
+		if err != nil {
+			s.Log.Error("Failed Marshal: ", "err", err)
+
 		}
 
 	}
+	return p
 }
