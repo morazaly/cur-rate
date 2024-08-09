@@ -1,7 +1,7 @@
 package db
 
 import (
-	"currency/internal/models"
+	"currency/internal/config"
 	"database/sql"
 	"fmt"
 	"log"
@@ -9,7 +9,7 @@ import (
 	_ "github.com/go-sql-driver/mysql"
 )
 
-func NewDb(aconfig *models.Config) *sql.DB {
+func NewDb(aconfig *config.Config) *sql.DB {
 
 	// Подключение к базе данных MySQL
 	dataSourceName := fmt.Sprintf(

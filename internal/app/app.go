@@ -1,16 +1,18 @@
 package app
 
 import (
+	"currency/internal/config"
 	"currency/internal/db"
-	"currency/internal/models"
+	"currency/internal/handler"
+	"currency/internal/logger"
 	"currency/internal/repository"
 	"currency/internal/service"
 	"database/sql"
 	"log/slog"
-	"os"
-	"strings"
 
-	"github.com/joho/godotenv"
+	"os"
+	"os/signal"
+	"syscall"
 )
 
 type app struct {
@@ -24,24 +26,38 @@ type App interface {
 
 func New() App {
 
-	logger := initLogger()
+	logger := logger.InitLogger()
 	return &app{log: logger}
 }
 
 func (h *app) Start() error {
 
-	aconfig := *models.NewConfig()
+	aconfig := *config.NewConfig()
+
+	errChan := make(chan error)
+	stopChan := make(chan os.Signal)
+	signal.Notify(stopChan, syscall.SIGTERM, syscall.SIGINT)
 
 	// Инициализация БД
 	db := initDb(aconfig)
-	s := service.New(repository.MySQLUserRepository{Db: db}, h.GetLogger())
-	handler := NewHandler(aconfig, s)
+	repository := repository.New(db)
+	s := service.New(repository, h.GetLogger())
+	handler := handler.NewHandler(aconfig, s)
 	h.GetLogger().Info("Server started at ", "Apport ", aconfig.AppPort)
-	h.GetLogger().Error(handler.StartHandler().Error())
+
+	go handler.StartHandler(errChan)
+
+	select {
+	case err := <-errChan:
+		h.GetLogger().Error("gracefully shutdown error", "error", err.Error())
+	case stop := <-stopChan:
+		h.GetLogger().Error("app is finished", "signal", stop.String())
+	}
+
 	return nil
 }
 
-func initDb(aconfig models.Config) *sql.DB {
+func initDb(aconfig config.Config) *sql.DB {
 
 	// Подключение к базе данных MySQL
 	adb := db.NewDb(&aconfig)
@@ -51,44 +67,4 @@ func initDb(aconfig models.Config) *sql.DB {
 
 func (a app) GetLogger() *slog.Logger {
 	return a.log
-}
-
-func initLogger() *slog.Logger {
-	if err := godotenv.Load(); err != nil {
-		panic("Error loading .env file")
-	}
-	logLevel := os.Getenv("LOG_LEVEL")
-	logFormat := os.Getenv("LOG_FORMAT")
-	if logLevel == "" {
-		logLevel = "info"
-	}
-	if logFormat == "" {
-		logFormat = "json"
-	}
-
-	var level slog.Level
-	switch strings.ToLower(logLevel) {
-	case "debug":
-		level = slog.LevelDebug
-	case "info":
-		level = slog.LevelInfo
-	case "warn":
-		level = slog.LevelWarn
-	case "error":
-		level = slog.LevelError
-	default:
-		level = slog.LevelInfo
-	}
-	handlerOptions := &slog.HandlerOptions{
-		Level: level,
-	}
-
-	var handler slog.Handler
-	if strings.ToLower(logFormat) == "json" {
-		handler = slog.NewJSONHandler(os.Stdout, handlerOptions)
-	} else {
-		handler = slog.NewTextHandler(os.Stdout, handlerOptions)
-	}
-
-	return slog.New(handler)
 }

@@ -1,4 +1,4 @@
-package models
+package config
 
 import (
 	"encoding/json"
@@ -21,7 +21,7 @@ type Config struct {
 func NewConfig() *Config {
 	var aconfig Config
 
-	configFile, err := os.Open("..\\config.json")
+	configFile, err := os.Open("..\\internal\\config\\config.json") //
 	if err != nil {
 		log.Fatal(err)
 	}

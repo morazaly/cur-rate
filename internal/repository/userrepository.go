@@ -4,11 +4,21 @@ import (
 	"context"
 	"currency/internal/models"
 	"database/sql"
+	"log/slog"
+	"time"
 )
 
 type MySQLUserRepository struct {
 	// DB connection and other fields
-	Db *sql.DB
+	db *sql.DB
+}
+
+func New(
+	db *sql.DB,
+) *MySQLUserRepository {
+	return &MySQLUserRepository{
+		db: db,
+	}
 }
 
 type UserRepository interface {
@@ -21,13 +31,14 @@ type UserRepository interface {
 
 const getByDateQuery = "SELECT * FROM  r_currency  where  A_DATE = str_to_date(?,'%d.%m.%Y')"
 
-func (repo *MySQLUserRepository) GetByDate(ctx context.Context, date string) ([]models.ResponseItem, error) {
+func (repo *MySQLUserRepository) GetByDate(ctx context.Context, date string, logger *slog.Logger) ([]models.ResponseItem, error) {
 	// Implementation
 
-	sql, err := repo.Db.QueryContext(ctx, getByDateQuery, date)
+	ctx, _ = context.WithTimeout(ctx, 5*time.Second)
+	sql, err := repo.db.QueryContext(ctx, getByDateQuery, date)
 
 	if err != nil {
-
+		logger.Error("Failed to query Exists: ", "err", err)
 		return nil, err
 	}
 
@@ -39,7 +50,7 @@ func (repo *MySQLUserRepository) GetByDate(ctx context.Context, date string) ([]
 		var responseItem models.ResponseItem
 
 		if err := sql.Scan(&responseItem.Id, &responseItem.Title, &responseItem.Code, &responseItem.Value, &responseItem.Adate); err != nil {
-			// handle error
+			logger.Error("Failed to query Exists: ", "err", err)
 			return nil, err
 		}
 		Data = append(Data, responseItem)
@@ -50,12 +61,13 @@ func (repo *MySQLUserRepository) GetByDate(ctx context.Context, date string) ([]
 
 const getByDateCodeQuery = "SELECT * FROM  r_currency  where code = ? AND A_DATE = str_to_date(?,'%d.%m.%Y')"
 
-func (repo *MySQLUserRepository) GetByDateCode(ctx context.Context, date string, code string) ([]models.ResponseItem, error) {
+func (repo *MySQLUserRepository) GetByDateCode(ctx context.Context, date string, code string, logger *slog.Logger) ([]models.ResponseItem, error) {
 	// Implementation
-	sql, err := repo.Db.QueryContext(ctx, getByDateCodeQuery, code, date)
+	ctx, _ = context.WithTimeout(ctx, 5*time.Second)
+	sql, err := repo.db.QueryContext(ctx, getByDateCodeQuery, code, date)
 
 	if err != nil {
-
+		logger.Error("Failed to query Exists: ", "err", err)
 		return nil, err
 	}
 	defer sql.Close()
@@ -68,7 +80,7 @@ func (repo *MySQLUserRepository) GetByDateCode(ctx context.Context, date string,
 		var responseItem models.ResponseItem
 
 		if err := sql.Scan(&responseItem.Id, &responseItem.Title, &responseItem.Code, &responseItem.Value, &responseItem.Adate); err != nil {
-			// handle error
+			logger.Error("Failed to query Exists: ", "err", err)
 			return nil, err
 		}
 		v.Data = append(v.Data, responseItem)
@@ -79,12 +91,14 @@ func (repo *MySQLUserRepository) GetByDateCode(ctx context.Context, date string,
 
 const existsQuery = "SELECT COUNT(*) FROM  r_currency  where code = ? AND A_DATE = str_to_date(?,'%d.%m.%Y')"
 
-func (repo *MySQLUserRepository) Exists(ctx context.Context, user *models.Item) (int, error) {
+func (repo *MySQLUserRepository) Exists(ctx context.Context, user *models.Item, logger *slog.Logger) (int, error) {
 	// Implementation
 	var count int
-	err := repo.Db.QueryRowContext(ctx, existsQuery, user.Title, user.Date).Scan(&count)
+	ctx, _ = context.WithTimeout(ctx, 5*time.Second)
+	err := repo.db.QueryRowContext(ctx, existsQuery, user.Title, user.Date).Scan(&count)
 
 	if err != nil {
+		logger.Error("Failed to query Exists: ", "err", err)
 		return 0, err
 
 	}
@@ -94,10 +108,12 @@ func (repo *MySQLUserRepository) Exists(ctx context.Context, user *models.Item) 
 
 const updateQuery = "UPDATE r_currency SET VALUE = ? WHERE  CODE = ? AND  A_DATE = str_to_date(?,'%d.%m.%Y')"
 
-func (repo *MySQLUserRepository) Update(ctx context.Context, user *models.Item) error {
+func (repo *MySQLUserRepository) Update(ctx context.Context, user *models.Item, logger *slog.Logger) error {
 	// Implementation
-	_, err := repo.Db.ExecContext(ctx, updateQuery, user.Description, user.Title, user.Date)
+	ctx, _ = context.WithTimeout(ctx, 5*time.Second)
+	_, err := repo.db.ExecContext(ctx, updateQuery, user.Description, user.Title, user.Date)
 	if err != nil {
+		logger.Error("Failed to query Exists: ", "err", err)
 		return err
 	}
 
@@ -106,11 +122,13 @@ func (repo *MySQLUserRepository) Update(ctx context.Context, user *models.Item) 
 
 const insertQuery = "INSERT INTO r_currency (TITLE, CODE, VALUE, A_DATE) VALUES (?, ?, ?, str_to_date(?,'%d.%m.%Y'))"
 
-func (repo *MySQLUserRepository) Insert(ctx context.Context, user *models.Item) error {
+func (repo *MySQLUserRepository) Insert(ctx context.Context, user *models.Item, logger *slog.Logger) error {
 	// Implementation
-	_, err := repo.Db.ExecContext(ctx, insertQuery, user.Fullname, user.Title, user.Description, user.Date)
+	ctx, _ = context.WithTimeout(ctx, 5*time.Second)
+	_, err := repo.db.ExecContext(ctx, insertQuery, user.Fullname, user.Title, user.Description, user.Date)
 
 	if err != nil {
+		logger.Error("Failed to query Exists: ", "err", err)
 		return err
 	}
 	return nil
