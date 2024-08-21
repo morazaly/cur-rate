@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"currency/internal/metrics"
 	"currency/internal/models"
 	"database/sql"
 	"log/slog"
@@ -33,9 +34,16 @@ const getByDateQuery = "SELECT * FROM  r_currency  where  A_DATE = str_to_date(?
 
 func (repo *MySQLUserRepository) GetByDate(ctx context.Context, date string, logger *slog.Logger) ([]models.ResponseItem, error) {
 	// Implementation
+	const op = "GetByDate"
+	ctxT, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
 
-	ctx, _ = context.WithTimeout(ctx, 5*time.Second)
-	sql, err := repo.db.QueryContext(ctx, getByDateQuery, date)
+	now := time.Now()
+	defer func() {
+		go metrics.DurPGProcessed.WithLabelValues(op).Observe(time.Since(now).Seconds())
+	}()
+
+	sql, err := repo.db.QueryContext(ctxT, getByDateQuery, date)
 
 	if err != nil {
 		logger.Error("Failed to query Exists: ", "err", err)
@@ -63,8 +71,15 @@ const getByDateCodeQuery = "SELECT * FROM  r_currency  where code = ? AND A_DATE
 
 func (repo *MySQLUserRepository) GetByDateCode(ctx context.Context, date string, code string, logger *slog.Logger) ([]models.ResponseItem, error) {
 	// Implementation
-	ctx, _ = context.WithTimeout(ctx, 5*time.Second)
-	sql, err := repo.db.QueryContext(ctx, getByDateCodeQuery, code, date)
+	const op = "GetByDateCode"
+	ctxT, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	now := time.Now()
+	defer func() {
+		go metrics.DurPGProcessed.WithLabelValues(op).Observe(time.Since(now).Seconds())
+	}()
+	sql, err := repo.db.QueryContext(ctxT, getByDateCodeQuery, code, date)
 
 	if err != nil {
 		logger.Error("Failed to query Exists: ", "err", err)
@@ -91,45 +106,46 @@ func (repo *MySQLUserRepository) GetByDateCode(ctx context.Context, date string,
 
 const existsQuery = "SELECT COUNT(*) FROM  r_currency  where code = ? AND A_DATE = str_to_date(?,'%d.%m.%Y')"
 
-func (repo *MySQLUserRepository) Exists(ctx context.Context, user *models.Item, logger *slog.Logger) (int, error) {
-	// Implementation
-	var count int
-	ctx, _ = context.WithTimeout(ctx, 5*time.Second)
-	err := repo.db.QueryRowContext(ctx, existsQuery, user.Title, user.Date).Scan(&count)
-
-	if err != nil {
-		logger.Error("Failed to query Exists: ", "err", err)
-		return 0, err
-
-	}
-
-	return count, nil
-}
-
 const updateQuery = "UPDATE r_currency SET VALUE = ? WHERE  CODE = ? AND  A_DATE = str_to_date(?,'%d.%m.%Y')"
-
-func (repo *MySQLUserRepository) Update(ctx context.Context, user *models.Item, logger *slog.Logger) error {
-	// Implementation
-	ctx, _ = context.WithTimeout(ctx, 5*time.Second)
-	_, err := repo.db.ExecContext(ctx, updateQuery, user.Description, user.Title, user.Date)
-	if err != nil {
-		logger.Error("Failed to query Exists: ", "err", err)
-		return err
-	}
-
-	return nil
-}
 
 const insertQuery = "INSERT INTO r_currency (TITLE, CODE, VALUE, A_DATE) VALUES (?, ?, ?, str_to_date(?,'%d.%m.%Y'))"
 
-func (repo *MySQLUserRepository) Insert(ctx context.Context, user *models.Item, logger *slog.Logger) error {
+func (repo *MySQLUserRepository) Append(ctx context.Context, user *models.Item, logger *slog.Logger) error {
 	// Implementation
-	ctx, _ = context.WithTimeout(ctx, 5*time.Second)
-	_, err := repo.db.ExecContext(ctx, insertQuery, user.Fullname, user.Title, user.Description, user.Date)
+	const op = "AppendQuery"
+	var count int
+	ctxT, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	now := time.Now()
+	defer func() {
+		go metrics.DurPGProcessed.WithLabelValues(op).Observe(time.Since(now).Seconds())
+	}()
+
+	err := repo.db.QueryRowContext(ctxT, existsQuery, user.Title, user.Date).Scan(&count)
 
 	if err != nil {
 		logger.Error("Failed to query Exists: ", "err", err)
 		return err
+
+	}
+
+	if count == 0 {
+		_, err := repo.db.ExecContext(ctx, insertQuery, user.Fullname, user.Title, user.Description, user.Date)
+
+		if err != nil {
+			logger.Error("Failed to query Exists: ", "err", err)
+			return err
+		}
+
+	} else {
+
+		_, err := repo.db.ExecContext(ctx, updateQuery, user.Description, user.Title, user.Date)
+		if err != nil {
+			logger.Error("Failed to query Exists: ", "err", err)
+			return err
+		}
+
 	}
 	return nil
 }

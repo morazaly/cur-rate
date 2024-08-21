@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"currency/internal/metrics"
 	"currency/internal/models"
 	"currency/internal/repository"
 	"encoding/json"
@@ -9,20 +10,24 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"time"
 )
 
 type Service struct {
 	mySQLUserRepository *repository.MySQLUserRepository
 	Log                 *slog.Logger
+	Metrics             *metrics.Metrics
 }
 
 func New(
 	mySQLUserRepository *repository.MySQLUserRepository,
 	log *slog.Logger,
+	Metrics *metrics.Metrics,
 ) *Service {
 	return &Service{
 		mySQLUserRepository: mySQLUserRepository,
 		Log:                 log,
+		Metrics:             Metrics,
 	}
 }
 
@@ -39,27 +44,13 @@ func (s *Service) saveToDatabase(ctx context.Context, responseXml []byte, errCh 
 	for _, item := range rate.Items {
 		item.Date = rate.Date
 
-		count, err := s.mySQLUserRepository.Exists(ctx, &item, s.Log)
+		err := s.mySQLUserRepository.Append(ctx, &item, s.Log)
 		if err != nil {
 			s.Log.Error("Failed to query Exists: ", "err", err)
 			errCh <- err
 			return
 		}
-		if count == 0 {
-			err := s.mySQLUserRepository.Insert(ctx, &item, s.Log)
-			if err != nil {
-				s.Log.Error("Failed to query Insert: ", "err", err)
-				errCh <- err
-				return
-			}
-		} else {
-			err := s.mySQLUserRepository.Update(ctx, &item, s.Log)
-			if err != nil {
-				s.Log.Error("Failed to query Update: ", "err", err)
-				errCh <- err
-				return
-			}
-		}
+
 	}
 	errCh <- nil
 }
@@ -68,9 +59,13 @@ func (s *Service) DownloadFromSource(ctx context.Context, url string, date strin
 
 	// URL of the public API
 	apiURL := url + date
-
+	ctxT, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
 	// Make the HTTP GET request
-	resp, err := http.Get(apiURL)
+	req, _ := http.NewRequestWithContext(ctxT, "GET", apiURL, nil)
+	client := &http.Client{}
+	resp, err := client.Do(req)
+
 	if err != nil {
 		s.Log.Error("Failed to fetch data: ", "err", err)
 		return models.Response{Success: false}

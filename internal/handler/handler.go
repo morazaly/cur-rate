@@ -7,7 +7,11 @@ import (
 	"encoding/json"
 	"net/http"
 
+	_ "currency/docs"
+
 	"github.com/gorilla/mux"
+
+	httpSwagger "github.com/swaggo/http-swagger/v2"
 )
 
 type Handler struct {
@@ -20,11 +24,15 @@ func NewHandler(aconfig config.Config, service *service.Service) *Handler {
 		service: service}
 }
 
-func (h *Handler) StartHandler(ch chan error) {
+func (h *Handler) StartHandler(ctx context.Context, ch chan error) {
 
 	r := mux.NewRouter()
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+
+	go func() {
+		ch <- h.service.Metrics.Start(ctx)
+	}()
+	r.PathPrefix("/swagger/").Handler(httpSwagger.WrapHandler)
+
 	r.HandleFunc("/currency/save/{date}", h.downloadFromSource(ctx)).Methods("GET")
 	r.HandleFunc("/currency/{date}/{code}", h.getSavedData(ctx)).Methods("GET")
 	r.HandleFunc("/currency/{date}", h.getSavedData(ctx)).Methods("GET")
@@ -32,6 +40,17 @@ func (h *Handler) StartHandler(ch chan error) {
 
 }
 
+// downloadFromSource example
+// @Summary Save currency by date
+// @Description Save currency by date
+// @Tags downloadFromSource
+// @Accept  json
+// @Produce  json
+// @Param date path string true "Date"
+// @Success 200 {object} map[string]interface{}
+// @Failure 400 {object} map[string]string
+// @Failure 500 {object} map[string]string
+// @Router /currency/save/{date} [get]
 func (h *Handler) downloadFromSource(ctx context.Context) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		vars := mux.Vars(r)
@@ -47,6 +66,19 @@ func (h *Handler) downloadFromSource(ctx context.Context) http.HandlerFunc {
 	}
 }
 
+// getSavedData example
+// @Summary Get currency by date and code
+// @Description  Get currency exchange rate by date and optionally by code
+// @Tags getSavedData
+// @Accept  json
+// @Produce  json
+// @Param date path string true "Date"
+// @Param code path string false "Code"
+// @Success 200 {object} map[string]interface{}
+// @Failure 400 {object} map[string]string
+// @Failure 500 {object} map[string]string
+// @Router /currency/{date}/{code} [get]
+// @Router /currency/{date} [get]
 func (h *Handler) getSavedData(ctx context.Context) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		vars := mux.Vars(r)

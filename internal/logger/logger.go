@@ -9,7 +9,7 @@ import (
 )
 
 func InitLogger() *slog.Logger {
-	if err := godotenv.Load("..\\.env"); err != nil {
+	if err := godotenv.Load(".env"); err != nil {
 		panic("Error loading .env file")
 	}
 	logLevel := os.Getenv("LOG_LEVEL")
