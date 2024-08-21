@@ -7,5 +7,6 @@
         "database": "TEST"
     },
     "appPort":":8080",
-    "apiURL" :"https://nationalbank.kz/rss/get_rates.cfm?fdate="
+    "apiURL" :"https://nationalbank.kz/rss/get_rates.cfm?fdate=",
+    "MetricPort":":8081"
 }

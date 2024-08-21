@@ -14,14 +14,15 @@ type Config struct {
 		Port     string `json:"port"`
 		Database string `json:"database"`
 	} `json:"mysql"`
-	AppPort string `json:"appPort"`
-	ApiURL  string `json:"apiURL"`
+	AppPort    string `json:"appPort"`
+	ApiURL     string `json:"apiURL"`
+	MetricPort string `json:"MetricPort"`
 }
 
 func NewConfig() *Config {
 	var aconfig Config
 
-	configFile, err := os.Open("..\\internal\\config\\config.json") //
+	configFile, err := os.Open("config\\config.json") //
 	if err != nil {
 		log.Fatal(err)
 	}
